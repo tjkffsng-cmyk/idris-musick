@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мой плеер</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f0f14">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(160deg, #16161d, #0b0b10);
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 20px 16px 12px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  #status {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+    padding: 0 16px 10px;
+  }
+  #list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 12px 140px;
+  }
+  .track {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin: 6px 0;
+    border-radius: 12px;
+    background: #1c1c26;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .track:active { background: #2a2a38; }
+  .track.playing {
+    background: #3a2f57;
+    border: 1px solid #7c5cff;
+  }
+  .track .icon {
+    width: 34px; height: 34px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    background: #333;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .track .name {
+    flex: 1;
+    font-size: 14px;
+    word-break: break-word;
+  }
+  .track .cached {
+    font-size: 11px;
+    color: #6cff9e;
+  }
+  #player-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #14141c;
+    border-top: 1px solid #2a2a38;
+    padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #now-playing {
+    font-size: 14px;
+    text-align: center;
+    color: #ddd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+  }
+  #controls button {
+    background: none;
+    border: none;
+    color: #eee;
+    font-size: 26px;
+    cursor: pointer;
+    padding: 6px;
+  }
+  #playBtn {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: #7c5cff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  #seek {
+    width: 100%;
+    accent-color: #7c5cff;
+  }
+  .time-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #999;
+  }
+  #upload-box {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    padding: 0 16px 10px;
+    flex-wrap: wrap;
+  }
+  #reload, #settingsBtn, #uploadBtn {
+    background: #2a2a38;
+    color: #ddd;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-block;
+  }
+  #uploadBtn {
+    background: #7c5cff;
+    color: #fff;
+  }
+  #settings-panel {
+    margin: 0 16px 14px;
+    padding: 12px;
+    background: #1c1c26;
+    border-radius: 12px;
+    font-size: 13px;
+  }
+  #settings-panel input[type="password"] {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #0f0f14;
+    color: #eee;
+    margin: 8px 0;
+  }
+  #settings-panel button {
+    background: #333;
+    color: #ddd;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-right: 8px;
+    cursor: pointer;
+  }
+  #uploadProgress {
+    padding: 0 16px 10px;
+    font-size: 13px;
+    color: #6cff9e;
+  }
+  .empty {
+    text-align: center;
+    color: #888;
+    padding: 40px 20px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎵 Мои музыки</h1>
+  <h1>👷🏻‍♂️ CREATED BY IDRIS</h1>
+</header>
+<div id="status">Загрузка списка...</div>
+
+<div id="upload-box">
+  <button id="reload" onclick="loadTracks()">Обновить список</button>
+  <button id="settingsBtn" onclick="toggleSettings()">⚙ Токен</button>
+  <label id="uploadBtn" for="fileInput">⬆ Загрузить с телефона</label>
+  <input type="file" id="fileInput" accept="audio/*" multiple style="display:none;">
+  <button id="cachedFilterBtn" onclick="toggleCachedFilter()">📥 Скачанные</button>
+</div>
+
+<div id="settings-panel" style="display:none;">
+  <p>Личный токен GitHub (fine-grained, права Contents: Read and write, только для репозитория <b id="repoNameLabel"></b>):</p>
+  <input type="password" id="tokenInput" placeholder="github_pat_...">
+  <button onclick="saveToken()">Сохранить</button>
+  <button onclick="clearToken()">Удалить</button>
+  <p id="tokenStatus" style="color:#888;font-size:12px;"></p>
+</div>
+
+<div id="uploadProgress"></div>
+
+<div id="list"></div>
+
+<div id="player-bar" style="display:none;">
+  <div id="now-playing">—</div>
+  <input type="range" id="seek" value="0" min="0" max="100" step="0.1">
+  <div class="time-row"><span id="curTime">0:00</span><span id="durTime">0:00</span></div>
+  <div id="controls">
+    <button onclick="prevTrack()">⏮</button>
+    <button id="playBtn" onclick="togglePlay()">▶</button>
+    <button onclick="nextTrack()">⏭</button>
+    <button id="modeBtn" onclick="cycleMode()" title="Режим воспроизведения">🔁</button>
+  </div>
+</div>
+
+<audio id="audio" preload="metadata"></audio>
+
+<script>
+// ====== НАСТРОЙКИ РЕПОЗИТОРИЯ ======
+const OWNER = "tjkffsng-cmyk";
+const REPO = "Musick";
+const BRANCH = "main"; // если у вас ветка master — поменяйте здесь
+const AUDIO_EXT = [".mp3", ".ogg", ".wav", ".m4a", ".flac", ".aac"];
+// ====================================
+
+let tracks = [];       // { name, rawUrl }
+let currentIndex = -1;
+let playMode = "order"; // "order" | "repeat" | "shuffle"
+let cachedUrls = new Set();
+let showOnlyCached = false;
+const audio = document.getElementById("audio");
+const listEl = document.getElementById("list");
+const statusEl = document.getElementById("status");
+const playerBar = document.getElementById("player-bar");
+
+function isAudioFile(name) {
+  return AUDIO_EXT.some(ext => name.toLowerCase().endsWith(ext));
+}
+
+async function fetchDir(path = "") {
+  const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("GitHub API: " + res.status);
+  return res.json();
+}
+
+async function loadTracks() {
+  statusEl.textContent = "Загрузка списка...";
+  listEl.innerHTML = "";
+  tracks = [];
+  try {
+    const root = await fetchDir("");
+    // файлы прямо в корне
+    for (const item of root) {
+      if (item.type === "file" && isAudioFile(item.name)) {
+        tracks.push({ name: item.name, rawUrl: item.download_url });
+      }
+    }
+    // заглядываем на 1 уровень в папки (music, songs, audio и т.п.)
+    const dirs = root.filter(i => i.type === "dir");
+    for (const dir of dirs) {
+      try {
+        const sub = await fetchDir(dir.path);
+        for (const item of sub) {
+          if (item.type === "file" && isAudioFile(item.name)) {
+            tracks.push({ name: `${dir.name}/${item.name}`, rawUrl: item.download_url });
+          }
+        }
+      } catch (e) { /* пропускаем недоступные папки */ }
+    }
+
+    if (tracks.length === 0) {
+      statusEl.textContent = "";
+      listEl.innerHTML = `<div class="empty">Аудиофайлы не найдены в репозитории.<br>Проверьте, что репозиторий публичный и файлы имеют расширения mp3/ogg/wav/m4a.</div>`;
+      return;
+    }
+
+    statusEl.textContent = `Найдено треков: ${tracks.length}`;
+    renderList();
+    await markCached();
+  } catch (err) {
+    statusEl.textContent = "Не удалось загрузить список (нет сети?). Показываю сохранённые офлайн-треки, если есть.";
+    await loadFromCacheOnly();
+  }
+}
+
+function renderList() {
+  listEl.innerHTML = "";
+  const visibleTracks = showOnlyCached
+    ? tracks.map((t, i) => ({ t, i })).filter(({ t }) => cachedUrls.has(t.rawUrl))
+    : tracks.map((t, i) => ({ t, i }));
+
+  if (showOnlyCached && visibleTracks.length === 0) {
+    listEl.innerHTML = `<div class="empty">Пока нет скачанных (офлайн) треков.<br>Проиграй трек хотя бы раз при интернете — он сохранится для офлайна.</div>`;
+    return;
+  }
+
+  visibleTracks.forEach(({ t, i }) => {
+    const div = document.createElement("div");
+    div.className = "track";
+    div.id = "track-" + i;
+    if (i === currentIndex) div.classList.add("playing");
+    div.onclick = () => playTrack(i);
+    div.innerHTML = `
+      <div class="icon">🎧</div>
+      <div class="name">${t.name}</div>
+      <div class="cached" id="cached-${i}">${cachedUrls.has(t.rawUrl) ? "✓ офлайн" : ""}</div>
+    `;
+    listEl.appendChild(div);
+  });
+}
+
+function toggleCachedFilter() {
+  showOnlyCached = !showOnlyCached;
+  document.getElementById("cachedFilterBtn").textContent = showOnlyCached ? "📥 Все треки" : "📥 Скачанные";
+  renderList();
+}
+
+// Проверяем, какие треки уже лежат в офлайн-кеше
+async function markCached() {
+  if (!('caches' in window)) return;
+  const cache = await caches.open('audio-cache-v1');
+  cachedUrls = new Set();
+  for (let i = 0; i < tracks.length; i++) {
+    const match = await cache.match(tracks[i].rawUrl);
+    if (match) {
+      cachedUrls.add(tracks[i].rawUrl);
+      const el = document.getElementById(`cached-${i}`);
+      if (el) el.textContent = "✓ офлайн";
+    }
+  }
+  if (showOnlyCached) renderList();
+}
+
+// Если нет интернета вообще — собираем список треков только из того, что уже в кеше
+async function loadFromCacheOnly() {
+  if (!('caches' in window)) return;
+  const cache = await caches.open('audio-cache-v1');
+  const keys = await cache.keys();
+  tracks = keys.map(req => ({
+    name: decodeURIComponent(req.url.split("/").pop()),
+    rawUrl: req.url
+  }));
+  renderList();
+  tracks.forEach((_, i) => {
+    const el = document.getElementById(`cached-${i}`);
+    if (el) el.textContent = "✓ офлайн";
+  });
+}
+
+function playTrack(i) {
+  currentIndex = i;
+  const t = tracks[i];
+  audio.src = t.rawUrl;
+  audio.play().catch(() => {});
+  document.querySelectorAll(".track").forEach(el => el.classList.remove("playing"));
+  document.getElementById("track-" + i)?.classList.add("playing");
+  document.getElementById("now-playing").textContent = t.name;
+  playerBar.style.display = "flex";
+  updateMediaSession(t.name);
+  cacheCurrentTrack(t.rawUrl);
+}
+
+function togglePlay() {
+  if (audio.paused) audio.play(); else audio.pause();
+}
+
+function nextTrack() {
+  if (tracks.length === 0) return;
+  if (playMode === "repeat") {
+    playTrack(currentIndex === -1 ? 0 : currentIndex);
+    return;
+  }
+  if (playMode === "shuffle") {
+    if (tracks.length === 1) { playTrack(0); return; }
+    let next;
+    do { next = Math.floor(Math.random() * tracks.length); } while (next === currentIndex);
+    playTrack(next);
+    return;
+  }
+  playTrack((currentIndex + 1) % tracks.length);
+}
+
+function prevTrack() {
+  if (tracks.length === 0) return;
+  if (playMode === "shuffle") {
+    if (tracks.length === 1) { playTrack(0); return; }
+    let prev;
+    do { prev = Math.floor(Math.random() * tracks.length); } while (prev === currentIndex);
+    playTrack(prev);
+    return;
+  }
+  playTrack((currentIndex - 1 + tracks.length) % tracks.length);
+}
+
+const MODE_ICONS = { order: "🔁", repeat: "🔂", shuffle: "🔀" };
+const MODE_ORDER = ["order", "repeat", "shuffle"];
+function cycleMode() {
+  const idx = MODE_ORDER.indexOf(playMode);
+  playMode = MODE_ORDER[(idx + 1) % MODE_ORDER.length];
+  document.getElementById("modeBtn").textContent = MODE_ICONS[playMode];
+}
+
+audio.addEventListener("play", () => document.getElementById("playBtn").textContent = "⏸");
+audio.addEventListener("pause", () => document.getElementById("playBtn").textContent = "▶");
+audio.addEventListener("ended", nextTrack);
+
+audio.addEventListener("timeupdate", () => {
+  const seek = document.getElementById("seek");
+  if (!isNaN(audio.duration)) {
+    seek.value = (audio.currentTime / audio.duration) * 100;
+    document.getElementById("curTime").textContent = formatTime(audio.currentTime);
+    document.getElementById("durTime").textContent = formatTime(audio.duration);
+  }
+});
+
+document.getElementById("seek").addEventListener("input", (e) => {
+  if (!isNaN(audio.duration)) {
+    audio.currentTime = (e.target.value / 100) * audio.duration;
+  }
+});
+
+function formatTime(sec) {
+  sec = Math.floor(sec || 0);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// ==== Управление с экрана блокировки / шторки уведомлений ====
+function updateMediaSession(title) {
+  if (!("mediaSession" in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: title,
+    artist: "Мой плеер",
+    album: "GitHub Musicks"
+  });
+  navigator.mediaSession.setActionHandler("play", () => audio.play());
+  navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+  navigator.mediaSession.setActionHandler("previoustrack", prevTrack);
+  navigator.mediaSession.setActionHandler("nexttrack", nextTrack);
+}
+
+// ==== Кешируем трек при первом проигрывании, чтобы потом играл офлайн ====
+async function cacheCurrentTrack(url) {
+  if (!('caches' in window)) return;
+  try {
+    const cache = await caches.open('audio-cache-v1');
+    const already = await cache.match(url);
+    if (!already) {
+      await cache.add(url);
+    }
+  } catch (e) {
+    // если офлайн — просто пропускаем, будет играть из сети когда появится связь
+  }
+}
+
+// Регистрируем Service Worker (нужен для офлайн-режима)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(console.error);
+  });
+}
+
+// ==== Настройки / токен ====
+const TOKEN_KEY = "gh_music_token";
+document.getElementById("repoNameLabel").textContent = `${OWNER}/${REPO}`;
+
+function toggleSettings() {
+  const panel = document.getElementById("settings-panel");
+  const has = !!localStorage.getItem(TOKEN_KEY);
+  document.getElementById("tokenStatus").textContent = has ? "Токен сохранён на этом устройстве." : "Токен не задан.";
+  panel.style.display = panel.style.display === "none" ? "block" : "none";
+}
+
+function saveToken() {
+  const val = document.getElementById("tokenInput").value.trim();
+  if (!val) return;
+  localStorage.setItem(TOKEN_KEY, val);
+  document.getElementById("tokenInput").value = "";
+  document.getElementById("tokenStatus").textContent = "Токен сохранён на этом устройстве.";
+}
+
+function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  document.getElementById("tokenStatus").textContent = "Токен удалён.";
+}
+
+// ==== Загрузка файлов с устройства прямо в репозиторий ====
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    alert("Сначала задай токен GitHub через кнопку «⚙ Токен» — без него загрузка невозможна.");
+    toggleSettings();
+    return;
+  }
+
+  const progressEl = document.getElementById("uploadProgress");
+  for (const file of files) {
+    progressEl.textContent = `Загружаю: ${file.name}...`;
+    try {
+      await uploadFileToGithub(file, token);
+      progressEl.textContent = `✓ Загружено: ${file.name}`;
+    } catch (err) {
+      progressEl.textContent = `Ошибка при загрузке ${file.name}: ${err.message}`;
+      console.error(err);
+    }
+  }
+  e.target.value = "";
+  setTimeout(() => loadTracks(), 1500);
+});
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadFileToGithub(file, token) {
+  const base64Content = await fileToBase64(file);
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `music/${Date.now()}_${safeName}`;
+
+  const res = await fetch(
+    `https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`,
+    {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json"
+      },
+      body: JSON.stringify({
+        message: `Добавлен трек: ${file.name}`,
+        content: base64Content,
+        branch: BRANCH
+      })
+    }
+  );
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || `HTTP ${res.status}`);
+  }
+}
+
+loadTracks();
+</script>
+</body>
+</html>

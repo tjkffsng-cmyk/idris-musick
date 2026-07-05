@@ -1,0 +1,9 @@
+{
+  "name": "Мой плеер",
+  "short_name": "Плеер",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f0f14",
+  "theme_color": "#0f0f14",
+  "icons": []
+}
